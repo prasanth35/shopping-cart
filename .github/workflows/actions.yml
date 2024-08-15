@@ -1,0 +1,34 @@
+name: Push-to-EC2
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Deploy to EC2 on master branch push
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout the files
+        uses: actions/checkout@v2
+
+      - name: Executing remote ssh commands using ssh key
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.HOST_DNS }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd prasanth/shopping-cart
+            git branch
+            git checkout main
+            git pull
+            rm -rf dist
+            yarn install
+            yarn build
+            pm2 start ecosystem.config.js --env prod    
+            pm2 reload Shopping-cart
+            echo "SUCCESS" 
+
