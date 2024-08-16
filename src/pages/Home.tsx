@@ -1,4 +1,4 @@
-import HomeBanner from "@/components/Banner/homeBanner"
+import HomeBanner from "@/components/Banner/HomeBanner"
 import Footer from "@/components/Layout/footer"
 import Header from "@/components/Layout/header"
 import ProductCategorySelect from "@/components/Product/ProductCategorySelect"

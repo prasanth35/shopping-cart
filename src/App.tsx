@@ -3,7 +3,6 @@ import Home from "./pages/Home"
 import store from "./redux/store"
 
 function App() {
-
   return(
     <Provider store={store}>
     <Home/>
