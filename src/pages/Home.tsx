@@ -1,6 +1,6 @@
 import HomeBanner from "@/components/Banner/HomeBanner"
-import Footer from "@/components/Layout/footer"
-import Header from "@/components/Layout/header"
+import Footer from "@/components/Layout/Footer"
+import Header from "@/components/Layout/Header"
 import ProductCategorySelect from "@/components/Product/ProductCategorySelect"
 import ProductList from "@/components/Product/ProductList"
 import { fetchCategory } from "@/redux/slices/categorySlice"
