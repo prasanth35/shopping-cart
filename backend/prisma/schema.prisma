@@ -1,0 +1,215 @@
+generator client {
+  provider      = "prisma-client-js"
+  // "native" covers local dev on whatever machine you run this on;
+  // linux-arm64-openssl-3.0.x covers the Raspberry Pi (64-bit Raspberry Pi OS / Debian bookworm).
+  binaryTargets = ["native", "linux-arm64-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum CategoryKind {
+  INCOME
+  EXPENSE
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+  TRANSFER
+  CC_PAYMENT
+}
+
+enum InvestmentTxnType {
+  BUY
+  SELL
+  SIP
+}
+
+enum VaultEntryType {
+  PASSWORD
+  CARD
+  NOTE
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  accounts     Account[]
+  creditCards  CreditCard[]
+  categories   Category[]
+  transactions Transaction[]
+  goals        Goal[]
+  investments  Investment[]
+  vaultEntries VaultEntry[]
+}
+
+model Account {
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name           String
+  type           String // e.g. savings, current, cash, wallet
+  currency       String   @default("INR")
+  openingBalance Decimal  @default(0) @db.Decimal(14, 2)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  transactionsFrom Transaction[] @relation("TxnAccount")
+  transactionsTo   Transaction[] @relation("TxnToAccount")
+  goals            Goal[]
+
+  @@index([userId])
+}
+
+model CreditCard {
+  id               String   @id @default(uuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name             String
+  bank             String
+  creditLimit      Decimal  @db.Decimal(14, 2)
+  billingCycleDay  Int
+  dueDay           Int
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  transactions Transaction[]
+
+  @@index([userId])
+}
+
+model Category {
+  id       String       @id @default(uuid())
+  userId   String
+  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name     String
+  kind     CategoryKind
+  color    String       @default("#6366f1")
+  icon     String?
+  parentId String?
+  parent   Category?    @relation("CategoryToSubcategory", fields: [parentId], references: [id], onDelete: SetNull)
+  children Category[]   @relation("CategoryToSubcategory")
+
+  transactions Transaction[]
+
+  @@index([userId])
+  @@unique([userId, name, kind])
+}
+
+model Transaction {
+  id           String          @id @default(uuid())
+  userId       String
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type         TransactionType
+  amount       Decimal         @db.Decimal(14, 2)
+  date         DateTime
+  note         String?
+  payee        String?
+  tags         String[]        @default([])
+
+  accountId    String?
+  account      Account?        @relation("TxnAccount", fields: [accountId], references: [id], onDelete: SetNull)
+
+  toAccountId  String?
+  toAccount    Account?        @relation("TxnToAccount", fields: [toAccountId], references: [id], onDelete: SetNull)
+
+  creditCardId String?
+  creditCard   CreditCard?     @relation(fields: [creditCardId], references: [id], onDelete: SetNull)
+
+  categoryId   String?
+  category     Category?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@index([userId, date])
+  @@index([accountId])
+  @@index([creditCardId])
+  @@index([categoryId])
+}
+
+model Goal {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  targetAmount Decimal  @db.Decimal(14, 2)
+  targetDate   DateTime?
+  linkedAccountId String?
+  linkedAccount   Account? @relation(fields: [linkedAccountId], references: [id], onDelete: SetNull)
+  isArchived   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  contributions GoalContribution[]
+
+  @@index([userId])
+}
+
+model GoalContribution {
+  id        String   @id @default(uuid())
+  goalId    String
+  goal      Goal     @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  amount    Decimal  @db.Decimal(14, 2)
+  date      DateTime
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([goalId])
+}
+
+model Investment {
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fundName       String
+  folioNumber    String?
+  category       String? // equity, debt, hybrid, etc.
+  currentNav     Decimal  @default(0) @db.Decimal(14, 4)
+  navUpdatedAt   DateTime?
+  isArchived     Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  transactions InvestmentTransaction[]
+
+  @@index([userId])
+}
+
+model InvestmentTransaction {
+  id           String            @id @default(uuid())
+  investmentId String
+  investment   Investment        @relation(fields: [investmentId], references: [id], onDelete: Cascade)
+  type         InvestmentTxnType
+  units        Decimal           @db.Decimal(14, 4)
+  nav          Decimal           @db.Decimal(14, 4)
+  amount       Decimal           @db.Decimal(14, 2)
+  date         DateTime
+  note         String?
+  createdAt    DateTime          @default(now())
+
+  @@index([investmentId])
+}
+
+model VaultEntry {
+  id         String         @id @default(uuid())
+  userId     String
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type       VaultEntryType
+  title      String
+  ciphertext String
+  iv         String
+  authTag    String
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@index([userId])
+}
