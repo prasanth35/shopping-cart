@@ -1,0 +1,242 @@
+generator client {
+  provider      = "prisma-client-js"
+  // "native" covers local dev on whatever machine you run this on;
+  // linux-arm64-openssl-3.0.x covers the Raspberry Pi (64-bit Raspberry Pi OS / Debian bookworm).
+  binaryTargets = ["native", "linux-arm64-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum CategoryKind {
+  INCOME
+  EXPENSE
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+  TRANSFER
+  CC_PAYMENT
+  GOAL_CONTRIBUTION
+  INVESTMENT_CONTRIBUTION
+}
+
+enum InvestmentType {
+  SIP
+  MUTUAL_FUND
+  NPS
+  FD
+  RD
+  OTHER
+}
+
+enum VaultEntryType {
+  PASSWORD
+  CARD
+  NOTE
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  accounts     Account[]
+  creditCards  CreditCard[]
+  categories   Category[]
+  transactions Transaction[]
+  goals        Goal[]
+  investments  Investment[]
+  vaultEntries VaultEntry[]
+  contacts     Contact[]
+}
+
+model Account {
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name           String
+  type           String // e.g. savings, current, cash, wallet
+  currency       String   @default("INR")
+  openingBalance Decimal  @default(0) @db.Decimal(14, 2)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  transactionsFrom Transaction[] @relation("TxnAccount")
+  transactionsTo   Transaction[] @relation("TxnToAccount")
+  goals            Goal[]
+
+  @@index([userId])
+}
+
+model CreditCard {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name            String
+  bank            String
+  creditLimit     Decimal  @db.Decimal(14, 2)
+  billingCycleDay Int
+  dueDay          Int
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  transactions Transaction[]
+
+  @@index([userId])
+}
+
+model Category {
+  id       String       @id @default(uuid())
+  userId   String
+  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name     String
+  kind     CategoryKind
+  color    String       @default("#6366f1")
+  icon     String?
+  parentId String?
+  parent   Category?    @relation("CategoryToSubcategory", fields: [parentId], references: [id], onDelete: SetNull)
+  children Category[]   @relation("CategoryToSubcategory")
+
+  transactions Transaction[]
+
+  @@unique([userId, name, kind])
+  @@index([userId])
+}
+
+model Transaction {
+  id     String          @id @default(uuid())
+  userId String
+  user   User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type   TransactionType
+  amount Decimal         @db.Decimal(14, 2)
+  date   DateTime
+  note   String?
+  payee  String?
+  tags   String[]        @default([])
+
+  accountId String?
+  account   Account? @relation("TxnAccount", fields: [accountId], references: [id], onDelete: SetNull)
+
+  toAccountId String?
+  toAccount   Account? @relation("TxnToAccount", fields: [toAccountId], references: [id], onDelete: SetNull)
+
+  creditCardId String?
+  creditCard   CreditCard? @relation(fields: [creditCardId], references: [id], onDelete: SetNull)
+
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  goalId String?
+  goal   Goal?   @relation(fields: [goalId], references: [id], onDelete: SetNull)
+
+  investmentId String?
+  investment   Investment? @relation(fields: [investmentId], references: [id], onDelete: SetNull)
+
+  splits Split[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, date])
+  @@index([accountId])
+  @@index([creditCardId])
+  @@index([categoryId])
+  @@index([goalId])
+  @@index([investmentId])
+}
+
+model Goal {
+  id              String    @id @default(uuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name            String
+  targetAmount    Decimal   @db.Decimal(14, 2)
+  targetDate      DateTime?
+  linkedAccountId String?
+  linkedAccount   Account?  @relation(fields: [linkedAccountId], references: [id], onDelete: SetNull)
+  isArchived      Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Contributions are GOAL_CONTRIBUTION transactions (see Transaction.goalId) —
+  // each one records which account the saved money came from.
+  contributions Transaction[]
+
+  @@index([userId])
+}
+
+// A person you split expenses with (not a User — no login of their own).
+model Contact {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  notes     String?
+  createdAt DateTime @default(now())
+
+  splits Split[]
+
+  @@index([userId])
+}
+
+// A portion of an expense you paid that a contact owes you back.
+model Split {
+  id                   String      @id @default(uuid())
+  transactionId        String
+  transaction          Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  contactId            String
+  contact              Contact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  amount               Decimal     @db.Decimal(14, 2)
+  settledAt            DateTime?
+  // The INCOME transaction created when this split was settled, if any.
+  settledTransactionId String?     @unique
+  createdAt            DateTime    @default(now())
+
+  @@index([transactionId])
+  @@index([contactId])
+}
+
+// A general savings/investment instrument — SIP, mutual fund, NPS, FD, RD, etc.
+// No NAV/unit tracking: just what you've put in, and a manually-updated current
+// value (so FD/RD/NPS interest growth can be reflected without needing market data).
+model Investment {
+  id              String         @id @default(uuid())
+  userId          String
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name            String
+  type            InvestmentType
+  referenceNumber String? // folio number, PRAN, FD/RD certificate number, etc.
+  currentValue    Decimal        @default(0) @db.Decimal(14, 2)
+  valueUpdatedAt  DateTime?
+  isArchived      Boolean        @default(false)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  // Contributions are INVESTMENT_CONTRIBUTION transactions (see Transaction.investmentId) —
+  // each one records which account the money came from.
+  contributions Transaction[]
+
+  @@index([userId])
+}
+
+model VaultEntry {
+  id         String         @id @default(uuid())
+  userId     String
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type       VaultEntryType
+  title      String
+  ciphertext String
+  iv         String
+  authTag    String
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@index([userId])
+}
