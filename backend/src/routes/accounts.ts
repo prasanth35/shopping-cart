@@ -33,7 +33,7 @@ async function computeBalance(accountId: string): Promise<number> {
       _sum: { amount: true },
       where: {
         accountId,
-        type: { in: ["EXPENSE", "TRANSFER", "CC_PAYMENT", "GOAL_CONTRIBUTION"] },
+        type: { in: ["EXPENSE", "TRANSFER", "CC_PAYMENT", "GOAL_CONTRIBUTION", "INVESTMENT_CONTRIBUTION"] },
       },
     }),
   ]);

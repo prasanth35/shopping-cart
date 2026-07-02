@@ -66,7 +66,25 @@ function validateTxnPayload(body: z.infer<typeof txnSchema>) {
   }
 }
 
-const TXN_TYPES = ["INCOME", "EXPENSE", "TRANSFER", "CC_PAYMENT", "GOAL_CONTRIBUTION"] as const;
+const TXN_TYPES = [
+  "INCOME",
+  "EXPENSE",
+  "TRANSFER",
+  "CC_PAYMENT",
+  "GOAL_CONTRIBUTION",
+  "INVESTMENT_CONTRIBUTION",
+] as const;
+
+// Transactions with side effects beyond a simple ledger entry (a card payment,
+// a goal/investment contribution) can only have amount/date/note edited —
+// their account/card/goal/investment link is fixed at creation time.
+const LINKED_TYPES = new Set(["CC_PAYMENT", "GOAL_CONTRIBUTION", "INVESTMENT_CONTRIBUTION"]);
+
+const basicEditSchema = z.object({
+  amount: positiveMoney,
+  date: isoDate,
+  note: z.string().max(500).optional().nullable(),
+});
 
 const listQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -76,6 +94,8 @@ const listQuerySchema = z.object({
   accountId: z.string().uuid().optional(),
   creditCardId: z.string().uuid().optional(),
   categoryId: z.string().uuid().optional(),
+  goalId: z.string().uuid().optional(),
+  investmentId: z.string().uuid().optional(),
   type: z.enum(TXN_TYPES).optional(),
   search: z.string().max(200).optional(),
 });
@@ -89,6 +109,8 @@ function buildWhere(userId: string, q: z.infer<typeof listQuerySchema>): Prisma.
     ...(q.accountId ? { OR: [{ accountId: q.accountId }, { toAccountId: q.accountId }] } : {}),
     ...(q.creditCardId ? { creditCardId: q.creditCardId } : {}),
     ...(q.categoryId ? { categoryId: q.categoryId } : {}),
+    ...(q.goalId ? { goalId: q.goalId } : {}),
+    ...(q.investmentId ? { investmentId: q.investmentId } : {}),
     ...(q.type ? { type: q.type } : {}),
     ...(q.search
       ? {
@@ -107,6 +129,7 @@ const txnInclude = {
   creditCard: true,
   category: true,
   goal: true,
+  investment: true,
   splits: { include: { contact: true } },
 } satisfies Prisma.TransactionInclude;
 
@@ -164,16 +187,31 @@ transactionsRouter.post(
 
 transactionsRouter.patch(
   "/:id",
-  validateBody(txnSchema),
   asyncHandler(async (req, res) => {
     const existing = await prisma.transaction.findFirst({
       where: { id: req.params.id, userId: req.userId },
     });
     if (!existing) throw new HttpError(404, "Transaction not found");
-    if (existing.type === "GOAL_CONTRIBUTION" || existing.type === "CC_PAYMENT") {
-      throw new HttpError(400, `${existing.type} transactions can't be edited — delete and re-create instead`);
+
+    if (LINKED_TYPES.has(existing.type)) {
+      // Amount/date/note only — the account/card/goal/investment link can't move.
+      const result = basicEditSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ error: "Invalid request body", issues: result.error.issues });
+      }
+      const txn = await prisma.transaction.update({
+        where: { id: existing.id },
+        data: result.data,
+        include: txnInclude,
+      });
+      return res.json(txn);
     }
-    const body = req.body as z.infer<typeof txnSchema>;
+
+    const result = txnSchema.safeParse(req.body);
+    if (!result.success) {
+      return res.status(400).json({ error: "Invalid request body", issues: result.error.issues });
+    }
+    const body = result.data;
     validateTxnPayload(body);
     const txn = await prisma.transaction.update({
       where: { id: existing.id },

@@ -35,7 +35,13 @@ export interface Category {
   parentId: string | null;
 }
 
-export type TransactionType = "INCOME" | "EXPENSE" | "TRANSFER" | "CC_PAYMENT" | "GOAL_CONTRIBUTION";
+export type TransactionType =
+  | "INCOME"
+  | "EXPENSE"
+  | "TRANSFER"
+  | "CC_PAYMENT"
+  | "GOAL_CONTRIBUTION"
+  | "INVESTMENT_CONTRIBUTION";
 
 export interface Contact {
   id: string;
@@ -70,11 +76,13 @@ export interface Transaction {
   creditCardId: string | null;
   categoryId: string | null;
   goalId: string | null;
+  investmentId: string | null;
   account: Account | null;
   toAccount: Account | null;
   creditCard: CreditCard | null;
   category: Category | null;
   goal: Goal | null;
+  investment: Investment | null;
   splits: Split[];
 }
 
@@ -89,29 +97,27 @@ export interface Goal {
   progressPct: number;
 }
 
+export type InvestmentType = "SIP" | "MUTUAL_FUND" | "NPS" | "FD" | "RD" | "OTHER";
+
+export const INVESTMENT_TYPE_LABELS: Record<InvestmentType, string> = {
+  SIP: "SIP",
+  MUTUAL_FUND: "Mutual Fund",
+  NPS: "NPS",
+  FD: "Fixed Deposit",
+  RD: "Recurring Deposit",
+  OTHER: "Other",
+};
+
 export interface Investment {
   id: string;
-  fundName: string;
-  folioNumber: string | null;
-  category: string | null;
-  currentNav: string;
-  navUpdatedAt: string | null;
+  name: string;
+  type: InvestmentType;
+  referenceNumber: string | null;
+  currentValue: string;
+  valueUpdatedAt: string | null;
   isArchived: boolean;
-  units: number;
   investedAmount: number;
-  currentValue: number;
   gainLoss: number;
-  avgNav: number;
-}
-
-export interface InvestmentTransaction {
-  id: string;
-  type: "BUY" | "SELL" | "SIP";
-  units: string;
-  nav: string;
-  amount: string;
-  date: string;
-  note: string | null;
 }
 
 export type VaultEntryType = "PASSWORD" | "CARD" | "NOTE";
@@ -148,6 +154,8 @@ export interface VaultEntryRevealed extends VaultEntryMeta {
   data: VaultPasswordData | VaultCardData | VaultNoteData;
 }
 
+export type DashboardRange = "1m" | "3m" | "6m" | "12m";
+
 export interface DashboardSummary {
   netWorth: number;
   totalAccountBalance: number;
@@ -157,8 +165,9 @@ export interface DashboardSummary {
   owedToYou: number;
   accountBalances: { id: string; name: string; balance: number }[];
   cardOutstanding: { id: string; name: string; outstanding: number }[];
-  monthIncome: number;
-  monthExpense: number;
+  range: DashboardRange;
+  periodIncome: number;
+  periodExpense: number;
   trend: { month: string; income: number; expense: number }[];
   expenseByCategory: { categoryId: string | null; name: string; color: string; total: number }[];
   goals: { id: string; name: string; targetAmount: number; currentAmount: number; progressPct: number }[];

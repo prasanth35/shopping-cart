@@ -21,12 +21,16 @@ enum TransactionType {
   TRANSFER
   CC_PAYMENT
   GOAL_CONTRIBUTION
+  INVESTMENT_CONTRIBUTION
 }
 
-enum InvestmentTxnType {
-  BUY
-  SELL
+enum InvestmentType {
   SIP
+  MUTUAL_FUND
+  NPS
+  FD
+  RD
+  OTHER
 }
 
 enum VaultEntryType {
@@ -132,6 +136,9 @@ model Transaction {
   goalId String?
   goal   Goal?   @relation(fields: [goalId], references: [id], onDelete: SetNull)
 
+  investmentId String?
+  investment   Investment? @relation(fields: [investmentId], references: [id], onDelete: SetNull)
+
   splits Split[]
 
   createdAt DateTime @default(now())
@@ -142,6 +149,7 @@ model Transaction {
   @@index([creditCardId])
   @@index([categoryId])
   @@index([goalId])
+  @@index([investmentId])
 }
 
 model Goal {
@@ -195,37 +203,27 @@ model Split {
   @@index([contactId])
 }
 
+// A general savings/investment instrument — SIP, mutual fund, NPS, FD, RD, etc.
+// No NAV/unit tracking: just what you've put in, and a manually-updated current
+// value (so FD/RD/NPS interest growth can be reflected without needing market data).
 model Investment {
-  id           String    @id @default(uuid())
-  userId       String
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  fundName     String
-  folioNumber  String?
-  category     String? // equity, debt, hybrid, etc.
-  currentNav   Decimal   @default(0) @db.Decimal(14, 4)
-  navUpdatedAt DateTime?
-  isArchived   Boolean   @default(false)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id              String         @id @default(uuid())
+  userId          String
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name            String
+  type            InvestmentType
+  referenceNumber String? // folio number, PRAN, FD/RD certificate number, etc.
+  currentValue    Decimal        @default(0) @db.Decimal(14, 2)
+  valueUpdatedAt  DateTime?
+  isArchived      Boolean        @default(false)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
-  transactions InvestmentTransaction[]
+  // Contributions are INVESTMENT_CONTRIBUTION transactions (see Transaction.investmentId) —
+  // each one records which account the money came from.
+  contributions Transaction[]
 
   @@index([userId])
-}
-
-model InvestmentTransaction {
-  id           String            @id @default(uuid())
-  investmentId String
-  investment   Investment        @relation(fields: [investmentId], references: [id], onDelete: Cascade)
-  type         InvestmentTxnType
-  units        Decimal           @db.Decimal(14, 4)
-  nav          Decimal           @db.Decimal(14, 4)
-  amount       Decimal           @db.Decimal(14, 2)
-  date         DateTime
-  note         String?
-  createdAt    DateTime          @default(now())
-
-  @@index([investmentId])
 }
 
 model VaultEntry {

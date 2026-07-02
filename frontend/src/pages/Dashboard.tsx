@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Area,
   AreaChart,
@@ -11,7 +12,15 @@ import {
 import { Wallet, CreditCard, TrendingUp, PiggyBank, Target, Users } from "lucide-react";
 import { useDashboardSummary } from "@/hooks/useDashboard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatMoney } from "@/lib/utils";
+import { formatMoney, cn } from "@/lib/utils";
+import type { DashboardRange } from "@/types";
+
+const RANGE_OPTIONS: { value: DashboardRange; label: string }[] = [
+  { value: "1m", label: "This month" },
+  { value: "3m", label: "Last 3 months" },
+  { value: "6m", label: "Last 6 months" },
+  { value: "12m", label: "Last 12 months" },
+];
 
 // Validated categorical palette (see dataviz skill) — fixed slot order, never cycled per-render.
 const INCOME_COLOR = "#2a78d6";
@@ -56,7 +65,8 @@ function monthLabel(ym: string): string {
 }
 
 export function DashboardPage() {
-  const { data, isLoading } = useDashboardSummary();
+  const [range, setRange] = useState<DashboardRange>("6m");
+  const { data, isLoading } = useDashboardSummary(range);
 
   if (isLoading || !data) {
     return <p className="text-muted-foreground">Loading dashboard…</p>;
@@ -64,12 +74,29 @@ export function DashboardPage() {
 
   const trendData = data.trend.map((t) => ({ ...t, label: monthLabel(t.month) }));
   const maxCategory = Math.max(1, ...data.expenseByCategory.map((c) => c.total));
+  const rangeLabel = RANGE_OPTIONS.find((r) => r.value === range)?.label ?? "";
 
   return (
     <div className="space-y-6">
-      <div>
-        <p className="text-sm text-muted-foreground">Net worth</p>
-        <p className="text-5xl font-semibold tracking-tight">{formatMoney(data.netWorth)}</p>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-sm text-muted-foreground">Net worth</p>
+          <p className="text-5xl font-semibold tracking-tight">{formatMoney(data.netWorth)}</p>
+        </div>
+        <div className="flex gap-1 rounded-md border bg-card p-1">
+          {RANGE_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setRange(opt.value)}
+              className={cn(
+                "rounded px-3 py-1.5 text-sm font-medium transition-colors",
+                range === opt.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent"
+              )}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -78,13 +105,13 @@ export function DashboardPage() {
         <StatTile label="Investments" value={formatMoney(data.investmentValue)} icon={TrendingUp} tone="good" />
         <StatTile label="Goal savings" value={formatMoney(data.goalSavings)} icon={Target} />
         <StatTile label="Owed to you" value={formatMoney(data.owedToYou)} icon={Users} tone={data.owedToYou > 0 ? "good" : undefined} />
-        <StatTile label="This month net" value={formatMoney(data.monthIncome - data.monthExpense)} icon={PiggyBank} />
+        <StatTile label={`${rangeLabel} net`} value={formatMoney(data.periodIncome - data.periodExpense)} icon={PiggyBank} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle className="text-base">Income vs expense — last 6 months</CardTitle>
+            <CardTitle className="text-base">Income vs expense — {rangeLabel.toLowerCase()}</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={280}>
@@ -127,11 +154,11 @@ export function DashboardPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Spend by category — this month</CardTitle>
+            <CardTitle className="text-base">Spend by category — {rangeLabel.toLowerCase()}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {data.expenseByCategory.length === 0 && (
-              <p className="text-sm text-muted-foreground">No expenses recorded this month yet.</p>
+              <p className="text-sm text-muted-foreground">No expenses recorded in this period yet.</p>
             )}
             {data.expenseByCategory.map((cat) => (
               <div key={cat.categoryId ?? "uncategorized"} className="space-y-1">

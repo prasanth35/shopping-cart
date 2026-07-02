@@ -1,5 +1,16 @@
 import { useState, type FormEvent } from "react";
-import { Plus, Trash2, Pencil, ArrowDownCircle, ArrowUpCircle, ArrowLeftRight, Target, Users, X } from "lucide-react";
+import {
+  Plus,
+  Trash2,
+  Pencil,
+  ArrowDownCircle,
+  ArrowUpCircle,
+  ArrowLeftRight,
+  Target,
+  TrendingUp,
+  Users,
+  X,
+} from "lucide-react";
 import {
   useTransactions,
   useCreateTransaction,
@@ -27,7 +38,13 @@ const TYPE_META: Record<TransactionType, { label: string; icon: typeof ArrowDown
   TRANSFER: { label: "Transfer", icon: ArrowLeftRight, className: "text-blue-600" },
   CC_PAYMENT: { label: "Card Payment", icon: ArrowLeftRight, className: "text-amber-600" },
   GOAL_CONTRIBUTION: { label: "Goal Contribution", icon: Target, className: "text-violet-600" },
+  INVESTMENT_CONTRIBUTION: { label: "Investment Contribution", icon: TrendingUp, className: "text-cyan-600" },
 };
+
+const OUTFLOW_TYPES = new Set<TransactionType>(["EXPENSE", "CC_PAYMENT", "GOAL_CONTRIBUTION", "INVESTMENT_CONTRIBUTION"]);
+// These represent a fixed link (account/card -> goal/investment) that was set
+// at creation time; only amount/date/note can be edited afterward.
+const LINKED_TYPES = new Set<TransactionType>(["CC_PAYMENT", "GOAL_CONTRIBUTION", "INVESTMENT_CONTRIBUTION"]);
 
 interface SplitRow {
   contactId: string;
@@ -77,6 +94,16 @@ export function TransactionsPage() {
     const date = String(form.get("date"));
     const note = String(form.get("note") || "") || undefined;
     const amount = Number(form.get("amount"));
+
+    if (editing && LINKED_TYPES.has(editing.type)) {
+      try {
+        await updateTxn.mutateAsync({ id: editing.id, data: { amount, date, note } });
+        setOpen(false);
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : "Could not save transaction");
+      }
+      return;
+    }
 
     let payload: Record<string, unknown>;
     if (formType === "INCOME") {
@@ -137,6 +164,38 @@ export function TransactionsPage() {
             <DialogHeader>
               <DialogTitle>{editing ? "Edit Transaction" : "New Transaction"}</DialogTitle>
             </DialogHeader>
+            {editing && LINKED_TYPES.has(editing.type) ? (
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  {editing.type === "CC_PAYMENT" && `Payment to ${editing.creditCard?.name ?? "card"} from ${editing.account?.name ?? "account"}.`}
+                  {editing.type === "GOAL_CONTRIBUTION" && `Contribution to ${editing.goal?.name ?? "goal"} from ${editing.account?.name ?? "account"}.`}
+                  {editing.type === "INVESTMENT_CONTRIBUTION" &&
+                    `Contribution to ${editing.investment?.name ?? "investment"} from ${editing.account?.name ?? "account"}.`}
+                  {" "}
+                  Only the amount, date, and note can be changed here — delete and re-create to change the account/card link.
+                </p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="amount">Amount</Label>
+                    <Input id="amount" name="amount" type="number" step="0.01" required defaultValue={editing.amount} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="date">Date</Label>
+                    <Input id="date" name="date" type="date" required defaultValue={editing.date.slice(0, 10)} />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="note">Note (optional)</Label>
+                  <Input id="note" name="note" defaultValue={editing.note ?? ""} />
+                </div>
+                {error && <p className="text-sm text-destructive">{error}</p>}
+                <DialogFooter>
+                  <Button type="submit" disabled={updateTxn.isPending}>
+                    Save
+                  </Button>
+                </DialogFooter>
+              </form>
+            ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-3 gap-2">
                 {(["EXPENSE", "INCOME", "TRANSFER"] as const).map((t) => (
@@ -298,6 +357,7 @@ export function TransactionsPage() {
                 </Button>
               </DialogFooter>
             </form>
+            )}
           </DialogContent>
         </Dialog>
       </div>
@@ -329,6 +389,29 @@ export function TransactionsPage() {
             <option value="TRANSFER">Transfer</option>
             <option value="CC_PAYMENT">Card Payment</option>
             <option value="GOAL_CONTRIBUTION">Goal Contribution</option>
+            <option value="INVESTMENT_CONTRIBUTION">Investment Contribution</option>
+          </select>
+          <select
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            onChange={(e) => setFilters((f) => ({ ...f, page: 1, accountId: e.target.value || undefined }))}
+          >
+            <option value="">All accounts</option>
+            {accounts?.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+          <select
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            onChange={(e) => setFilters((f) => ({ ...f, page: 1, categoryId: e.target.value || undefined }))}
+          >
+            <option value="">All categories</option>
+            {categories?.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
           </select>
         </CardContent>
       </Card>
@@ -346,7 +429,7 @@ export function TransactionsPage() {
                   <Icon className={cn("h-5 w-5 shrink-0", meta.className)} />
                   <div className="min-w-0">
                     <p className="truncate font-medium">
-                      {txn.note || txn.category?.name || txn.goal?.name || meta.label}
+                      {txn.note || txn.category?.name || txn.goal?.name || txn.investment?.name || meta.label}
                     </p>
                     <p className="truncate text-xs text-muted-foreground">
                       {formatDate(txn.date)}
@@ -355,6 +438,7 @@ export function TransactionsPage() {
                       {txn.toAccount && ` → ${txn.toAccount.name}`}
                       {txn.category && ` · ${txn.category.name}`}
                       {txn.goal && ` · Goal: ${txn.goal.name}`}
+                      {txn.investment && ` · Investment: ${txn.investment.name}`}
                       {txn.splits.length > 0 &&
                         ` · Split: ${txn.splits.map((s) => `${s.contact.name} ${formatMoney(Number(s.amount))}${s.settledAt ? " (settled)" : ""}`).join(", ")}`}
                     </p>
@@ -367,14 +451,12 @@ export function TransactionsPage() {
                     </Badge>
                   )}
                   <span className={cn("font-semibold", meta.className)}>
-                    {txn.type === "EXPENSE" || txn.type === "CC_PAYMENT" || txn.type === "GOAL_CONTRIBUTION" ? "-" : txn.type === "INCOME" ? "+" : ""}
+                    {OUTFLOW_TYPES.has(txn.type) ? "-" : txn.type === "INCOME" ? "+" : ""}
                     {formatMoney(Number(txn.amount))}
                   </span>
-                  {txn.type !== "CC_PAYMENT" && txn.type !== "GOAL_CONTRIBUTION" && (
-                    <Button variant="ghost" size="icon" onClick={() => openEdit(txn)}>
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                  )}
+                  <Button variant="ghost" size="icon" onClick={() => openEdit(txn)}>
+                    <Pencil className="h-4 w-4" />
+                  </Button>
                   <Button
                     variant="ghost"
                     size="icon"

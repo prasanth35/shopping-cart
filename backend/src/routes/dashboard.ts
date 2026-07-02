@@ -1,7 +1,9 @@
 import { Router } from "express";
+import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { asyncHandler } from "../middleware/errorHandler";
 import { requireAuth } from "../middleware/auth";
+import { validateQuery } from "../middleware/validate";
 import { computeAccountBalance } from "./accounts";
 import { computeCreditCardOutstanding } from "./creditCards";
 
@@ -15,10 +17,19 @@ function monthRange(offset: number) {
   return { start, end };
 }
 
+const RANGE_MONTHS: Record<string, number> = { "1m": 1, "3m": 3, "6m": 6, "12m": 12 };
+
+const summaryQuerySchema = z.object({
+  range: z.enum(["1m", "3m", "6m", "12m"]).default("6m"),
+});
+
 dashboardRouter.get(
   "/summary",
+  validateQuery(summaryQuerySchema),
   asyncHandler(async (req, res) => {
     const userId = req.userId!;
+    const { range } = req.query as unknown as z.infer<typeof summaryQuerySchema>;
+    const monthsBack = RANGE_MONTHS[range];
 
     const [accounts, creditCards, investments, goals] = await Promise.all([
       prisma.account.findMany({ where: { userId, isActive: true } }),
@@ -34,32 +45,30 @@ dashboardRouter.get(
       creditCards.map(async (c) => ({ id: c.id, name: c.name, outstanding: await computeCreditCardOutstanding(c.id) }))
     );
 
-    let investmentValue = 0;
-    for (const inv of investments) {
-      const txns = await prisma.investmentTransaction.findMany({ where: { investmentId: inv.id } });
-      let units = 0;
-      for (const t of txns) units += t.type === "SELL" ? -Number(t.units) : Number(t.units);
-      investmentValue += units * Number(inv.currentNav);
-    }
+    // Investment contributions already reduce the source account's balance
+    // (see computeAccountBalance), so net worth adds the manually-tracked
+    // current value back in — same pattern as goal savings below.
+    const investmentValue = investments.reduce((s, inv) => s + Number(inv.currentValue), 0);
 
     const totalAccountBalance = accountBalances.reduce((s, a) => s + a.balance, 0);
     const totalCardOutstanding = cardOutstanding.reduce((s, c) => s + c.outstanding, 0);
     const netWorth = totalAccountBalance + investmentValue - totalCardOutstanding;
 
-    const { start: monthStart, end: monthEnd } = monthRange(0);
-    const [monthIncome, monthExpense] = await Promise.all([
+    const { start: periodStart } = monthRange(monthsBack - 1);
+    const { end: periodEnd } = monthRange(0);
+    const [periodIncome, periodExpense] = await Promise.all([
       prisma.transaction.aggregate({
         _sum: { amount: true },
-        where: { userId, type: "INCOME", date: { gte: monthStart, lt: monthEnd } },
+        where: { userId, type: "INCOME", date: { gte: periodStart, lt: periodEnd } },
       }),
       prisma.transaction.aggregate({
         _sum: { amount: true },
-        where: { userId, type: "EXPENSE", date: { gte: monthStart, lt: monthEnd } },
+        where: { userId, type: "EXPENSE", date: { gte: periodStart, lt: periodEnd } },
       }),
     ]);
 
     const trend: { month: string; income: number; expense: number }[] = [];
-    for (let i = 5; i >= 0; i--) {
+    for (let i = monthsBack - 1; i >= 0; i--) {
       const { start, end } = monthRange(i);
       const [inc, exp] = await Promise.all([
         prisma.transaction.aggregate({
@@ -80,7 +89,7 @@ dashboardRouter.get(
 
     const categoryBreakdown = await prisma.transaction.groupBy({
       by: ["categoryId"],
-      where: { userId, type: "EXPENSE", date: { gte: monthStart, lt: monthEnd } },
+      where: { userId, type: "EXPENSE", date: { gte: periodStart, lt: periodEnd } },
       _sum: { amount: true },
     });
     const categories = await prisma.category.findMany({
@@ -130,8 +139,9 @@ dashboardRouter.get(
       owedToYou: Number(owedToYou._sum.amount ?? 0),
       accountBalances,
       cardOutstanding,
-      monthIncome: Number(monthIncome._sum.amount ?? 0),
-      monthExpense: Number(monthExpense._sum.amount ?? 0),
+      range,
+      periodIncome: Number(periodIncome._sum.amount ?? 0),
+      periodExpense: Number(periodExpense._sum.amount ?? 0),
       trend,
       expenseByCategory,
       goals: goalsSummary,

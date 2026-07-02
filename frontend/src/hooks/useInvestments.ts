@@ -33,26 +33,28 @@ export function useDeleteInvestment() {
   });
 }
 
-export function useAddInvestmentTransaction() {
+export function useContributeInvestment() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      id,
-      type,
-      units,
-      nav,
-      amount,
-      date,
-      note,
-    }: {
-      id: string;
-      type: "BUY" | "SELL" | "SIP";
-      units: number;
-      nav: number;
-      amount: number;
-      date?: string;
-      note?: string;
-    }) => api.post<Investment>(`/investments/${id}/transactions`, { type, units, nav, amount, date, note }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+    mutationFn: ({ id, accountId, amount, note }: { id: string; accountId: string; amount: number; note?: string }) =>
+      api.post<Investment>(`/investments/${id}/contribute`, { accountId, amount, note }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: KEY });
+      qc.invalidateQueries({ queryKey: ["accounts"] });
+      qc.invalidateQueries({ queryKey: ["transactions"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
+}
+
+export function useUpdateInvestmentValue() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, currentValue }: { id: string; currentValue: number }) =>
+      api.patch<Investment>(`/investments/${id}/current-value`, { currentValue }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: KEY });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    },
   });
 }
