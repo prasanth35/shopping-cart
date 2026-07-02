@@ -35,7 +35,27 @@ export interface Category {
   parentId: string | null;
 }
 
-export type TransactionType = "INCOME" | "EXPENSE" | "TRANSFER" | "CC_PAYMENT";
+export type TransactionType = "INCOME" | "EXPENSE" | "TRANSFER" | "CC_PAYMENT" | "GOAL_CONTRIBUTION";
+
+export interface Contact {
+  id: string;
+  name: string;
+  notes: string | null;
+  createdAt: string;
+  owedToYou: number;
+}
+
+export interface Split {
+  id: string;
+  transactionId: string;
+  contactId: string;
+  amount: string;
+  settledAt: string | null;
+  settledTransactionId: string | null;
+  createdAt: string;
+  contact: Contact;
+  transaction?: Transaction;
+}
 
 export interface Transaction {
   id: string;
@@ -49,10 +69,13 @@ export interface Transaction {
   toAccountId: string | null;
   creditCardId: string | null;
   categoryId: string | null;
+  goalId: string | null;
   account: Account | null;
   toAccount: Account | null;
   creditCard: CreditCard | null;
   category: Category | null;
+  goal: Goal | null;
+  splits: Split[];
 }
 
 export interface Goal {
@@ -64,13 +87,6 @@ export interface Goal {
   isArchived: boolean;
   currentAmount: number;
   progressPct: number;
-}
-
-export interface GoalContribution {
-  id: string;
-  amount: string;
-  date: string;
-  note: string | null;
 }
 
 export interface Investment {
@@ -137,6 +153,8 @@ export interface DashboardSummary {
   totalAccountBalance: number;
   totalCardOutstanding: number;
   investmentValue: number;
+  goalSavings: number;
+  owedToYou: number;
   accountBalances: { id: string; name: string; balance: number }[];
   cardOutstanding: { id: string; name: string; outstanding: number }[];
   monthIncome: number;

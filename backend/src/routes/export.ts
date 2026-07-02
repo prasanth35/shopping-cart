@@ -28,7 +28,7 @@ exportRouter.get(
           : {}),
       },
       orderBy: { date: "asc" },
-      include: { account: true, toAccount: true, creditCard: true, category: true },
+      include: { account: true, toAccount: true, creditCard: true, category: true, goal: true },
     });
 
     res.setHeader("Content-Type", "text/csv");
@@ -44,6 +44,7 @@ exportRouter.get(
         "account",
         "to_account",
         "credit_card",
+        "goal",
         "payee",
         "note",
         "tags",
@@ -59,6 +60,7 @@ exportRouter.get(
         account: t.account?.name ?? "",
         to_account: t.toAccount?.name ?? "",
         credit_card: t.creditCard?.name ?? "",
+        goal: t.goal?.name ?? "",
         payee: t.payee ?? "",
         note: t.note ?? "",
         tags: t.tags.join("|"),

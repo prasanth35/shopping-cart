@@ -18,9 +18,9 @@ const goalSchema = z.object({
 });
 
 async function withProgress<T extends { id: string; targetAmount: unknown }>(goal: T) {
-  const sum = await prisma.goalContribution.aggregate({
+  const sum = await prisma.transaction.aggregate({
     _sum: { amount: true },
-    where: { goalId: goal.id },
+    where: { goalId: goal.id, type: "GOAL_CONTRIBUTION" },
   });
   const currentAmount = Number(sum._sum.amount ?? 0);
   return { ...goal, currentAmount, progressPct: Math.min(100, (currentAmount / Number(goal.targetAmount)) * 100) };
@@ -62,24 +62,48 @@ goalsRouter.delete(
   asyncHandler(async (req, res) => {
     const existing = await prisma.goal.findFirst({ where: { id: req.params.id, userId: req.userId } });
     if (!existing) throw new HttpError(404, "Goal not found");
+    const txnCount = await prisma.transaction.count({ where: { goalId: existing.id } });
+    if (txnCount > 0) {
+      throw new HttpError(400, "Cannot delete a goal with contributions; archive it instead");
+    }
     await prisma.goal.delete({ where: { id: existing.id } });
     res.status(204).send();
   })
 );
 
 const contributionSchema = z.object({
+  accountId: z.string().uuid(),
   amount: positiveMoney,
   date: isoDate.default(() => new Date()),
   note: z.string().max(300).optional().nullable(),
 });
 
+// Contributing deducts the amount from the chosen account's spendable balance
+// (a real transaction, not just a tally) so it's always clear where goal
+// savings came from.
 goalsRouter.post(
   "/:id/contribute",
   validateBody(contributionSchema),
   asyncHandler(async (req, res) => {
     const goal = await prisma.goal.findFirst({ where: { id: req.params.id, userId: req.userId } });
     if (!goal) throw new HttpError(404, "Goal not found");
-    await prisma.goalContribution.create({ data: { ...req.body, goalId: goal.id } });
+    const account = await prisma.account.findFirst({
+      where: { id: req.body.accountId, userId: req.userId },
+    });
+    if (!account) throw new HttpError(404, "Account not found");
+
+    const { accountId, amount, date, note } = req.body as z.infer<typeof contributionSchema>;
+    await prisma.transaction.create({
+      data: {
+        userId: req.userId!,
+        type: "GOAL_CONTRIBUTION",
+        amount,
+        date,
+        note: note ?? `Contribution to ${goal.name}`,
+        accountId,
+        goalId: goal.id,
+      },
+    });
     res.status(201).json(await withProgress(goal));
   })
 );
@@ -89,9 +113,10 @@ goalsRouter.get(
   asyncHandler(async (req, res) => {
     const goal = await prisma.goal.findFirst({ where: { id: req.params.id, userId: req.userId } });
     if (!goal) throw new HttpError(404, "Goal not found");
-    const contributions = await prisma.goalContribution.findMany({
-      where: { goalId: goal.id },
+    const contributions = await prisma.transaction.findMany({
+      where: { goalId: goal.id, type: "GOAL_CONTRIBUTION" },
       orderBy: { date: "desc" },
+      include: { account: true },
     });
     res.json(contributions);
   })

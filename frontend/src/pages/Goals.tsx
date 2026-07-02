@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Plus, Trash2, PiggyBank } from "lucide-react";
 import { useGoals, useCreateGoal, useDeleteGoal, useContributeGoal } from "@/hooks/useGoals";
+import { useAccounts } from "@/hooks/useAccounts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,6 +12,7 @@ import type { Goal } from "@/types";
 
 export function GoalsPage() {
   const { data: goals, isLoading } = useGoals();
+  const { data: accounts } = useAccounts();
   const createGoal = useCreateGoal();
   const deleteGoal = useDeleteGoal();
   const contribute = useContributeGoal();
@@ -33,7 +35,11 @@ export function GoalsPage() {
     e.preventDefault();
     if (!contributeTarget) return;
     const form = new FormData(e.currentTarget);
-    await contribute.mutateAsync({ id: contributeTarget.id, amount: Number(form.get("amount")) });
+    await contribute.mutateAsync({
+      id: contributeTarget.id,
+      accountId: String(form.get("accountId")),
+      amount: Number(form.get("amount")),
+    });
     setContributeTarget(null);
   }
 
@@ -109,8 +115,26 @@ export function GoalsPage() {
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle>Contribute to {goal.name}</DialogTitle>
+                    <p className="text-sm text-muted-foreground">
+                      This moves money out of the account's spendable balance and into this goal.
+                    </p>
                   </DialogHeader>
                   <form onSubmit={handleContribute} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="accountId">From account</Label>
+                      <select
+                        id="accountId"
+                        name="accountId"
+                        required
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      >
+                        {accounts?.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {a.name} ({formatMoney(a.balance)})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                     <div className="space-y-2">
                       <Label htmlFor="amount">Amount</Label>
                       <Input id="amount" name="amount" type="number" step="0.01" required />

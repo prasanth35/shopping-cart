@@ -14,6 +14,8 @@ import { investmentsRouter } from "./routes/investments";
 import { vaultRouter } from "./routes/vault";
 import { dashboardRouter } from "./routes/dashboard";
 import { exportRouter } from "./routes/export";
+import { contactsRouter } from "./routes/contacts";
+import { splitsRouter } from "./routes/splits";
 
 export function createApp() {
   const app = express();
@@ -40,6 +42,8 @@ export function createApp() {
   app.use("/api/vault", vaultRouter);
   app.use("/api/dashboard", dashboardRouter);
   app.use("/api/export", exportRouter);
+  app.use("/api/contacts", contactsRouter);
+  app.use("/api/splits", splitsRouter);
 
   app.use("/api", notFound);
   app.use(errorHandler);

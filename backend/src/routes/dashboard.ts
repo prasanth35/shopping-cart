@@ -98,9 +98,9 @@ dashboardRouter.get(
 
     const goalsSummary = await Promise.all(
       goals.map(async (g) => {
-        const sum = await prisma.goalContribution.aggregate({
+        const sum = await prisma.transaction.aggregate({
           _sum: { amount: true },
-          where: { goalId: g.id },
+          where: { goalId: g.id, type: "GOAL_CONTRIBUTION" },
         });
         const current = Number(sum._sum.amount ?? 0);
         return {
@@ -112,12 +112,22 @@ dashboardRouter.get(
         };
       })
     );
+    // Goal contributions reduce the source account's spendable balance, but the
+    // money is still yours (just earmarked) — add it back in for net worth.
+    const goalSavings = goalsSummary.reduce((s, g) => s + g.currentAmount, 0);
+
+    const owedToYou = await prisma.split.aggregate({
+      _sum: { amount: true },
+      where: { contact: { userId }, settledAt: null },
+    });
 
     res.json({
-      netWorth,
+      netWorth: netWorth + goalSavings,
       totalAccountBalance,
       totalCardOutstanding,
       investmentValue,
+      goalSavings,
+      owedToYou: Number(owedToYou._sum.amount ?? 0),
       accountBalances,
       cardOutstanding,
       monthIncome: Number(monthIncome._sum.amount ?? 0),

@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Plus, Trash2, Pencil, ArrowDownCircle, ArrowUpCircle, ArrowLeftRight } from "lucide-react";
+import { Plus, Trash2, Pencil, ArrowDownCircle, ArrowUpCircle, ArrowLeftRight, Target, Users, X } from "lucide-react";
 import {
   useTransactions,
   useCreateTransaction,
@@ -10,6 +10,7 @@ import {
 import { useAccounts } from "@/hooks/useAccounts";
 import { useCreditCards } from "@/hooks/useCreditCards";
 import { useCategories } from "@/hooks/useCategories";
+import { useContacts } from "@/hooks/useContacts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -25,7 +26,13 @@ const TYPE_META: Record<TransactionType, { label: string; icon: typeof ArrowDown
   EXPENSE: { label: "Expense", icon: ArrowUpCircle, className: "text-destructive" },
   TRANSFER: { label: "Transfer", icon: ArrowLeftRight, className: "text-blue-600" },
   CC_PAYMENT: { label: "Card Payment", icon: ArrowLeftRight, className: "text-amber-600" },
+  GOAL_CONTRIBUTION: { label: "Goal Contribution", icon: Target, className: "text-violet-600" },
 };
+
+interface SplitRow {
+  contactId: string;
+  amount: string;
+}
 
 export function TransactionsPage() {
   const [filters, setFilters] = useState<TransactionFilters>({ page: 1, pageSize: 25 });
@@ -33,6 +40,7 @@ export function TransactionsPage() {
   const { data: accounts } = useAccounts();
   const { data: creditCards } = useCreditCards();
   const { data: categories } = useCategories();
+  const { data: contacts } = useContacts();
   const createTxn = useCreateTransaction();
   const updateTxn = useUpdateTransaction();
   const deleteTxn = useDeleteTransaction();
@@ -41,12 +49,14 @@ export function TransactionsPage() {
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [formType, setFormType] = useState<TransactionType>("EXPENSE");
   const [expenseSource, setExpenseSource] = useState<"account" | "card">("account");
+  const [splitRows, setSplitRows] = useState<SplitRow[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   function openCreate() {
     setEditing(null);
     setFormType("EXPENSE");
     setExpenseSource("account");
+    setSplitRows([]);
     setError(null);
     setOpen(true);
   }
@@ -55,6 +65,7 @@ export function TransactionsPage() {
     setEditing(txn);
     setFormType(txn.type === "CC_PAYMENT" ? "EXPENSE" : txn.type);
     setExpenseSource(txn.creditCardId ? "card" : "account");
+    setSplitRows([]);
     setError(null);
     setOpen(true);
   }
@@ -71,6 +82,9 @@ export function TransactionsPage() {
     if (formType === "INCOME") {
       payload = { type: "INCOME", amount, date, note, accountId: String(form.get("accountId")), categoryId: String(form.get("categoryId")) };
     } else if (formType === "EXPENSE") {
+      const splits = splitRows
+        .filter((r) => r.contactId && Number(r.amount) > 0)
+        .map((r) => ({ contactId: r.contactId, amount: Number(r.amount) }));
       payload = {
         type: "EXPENSE",
         amount,
@@ -80,6 +94,7 @@ export function TransactionsPage() {
         ...(expenseSource === "account"
           ? { accountId: String(form.get("accountId")) }
           : { creditCardId: String(form.get("creditCardId")) }),
+        ...(splits.length > 0 ? { splits } : {}),
       };
     } else {
       payload = {
@@ -193,6 +208,66 @@ export function TransactionsPage() {
                     <SelectField label="Credit card" name="creditCardId" options={creditCards} defaultValue={editing?.creditCardId ?? undefined} />
                   )}
                   <SelectField label="Category" name="categoryId" options={expenseCategories} defaultValue={editing?.categoryId ?? undefined} />
+
+                  {!editing && contacts && contacts.length > 0 && (
+                    <div className="space-y-2 rounded-md border p-3">
+                      <div className="flex items-center justify-between">
+                        <Label className="flex items-center gap-2">
+                          <Users className="h-3.5 w-3.5" /> Split with (optional)
+                        </Label>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setSplitRows((rows) => [...rows, { contactId: "", amount: "" }])}
+                        >
+                          + Add
+                        </Button>
+                      </div>
+                      {splitRows.map((row, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                          <select
+                            value={row.contactId}
+                            onChange={(e) =>
+                              setSplitRows((rows) => rows.map((r, ri) => (ri === i ? { ...r, contactId: e.target.value } : r)))
+                            }
+                            className="flex h-9 flex-1 rounded-md border border-input bg-background px-2 text-sm"
+                          >
+                            <option value="">Select contact…</option>
+                            {contacts.map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.name}
+                              </option>
+                            ))}
+                          </select>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            placeholder="Amount"
+                            className="h-9 w-28"
+                            value={row.amount}
+                            onChange={(e) =>
+                              setSplitRows((rows) => rows.map((r, ri) => (ri === i ? { ...r, amount: e.target.value } : r)))
+                            }
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-9 w-9 shrink-0"
+                            onClick={() => setSplitRows((rows) => rows.filter((_, ri) => ri !== i))}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                      {splitRows.length === 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          Add a friend here to mark part of this expense as owed back to you.
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </>
               )}
 
@@ -253,6 +328,7 @@ export function TransactionsPage() {
             <option value="EXPENSE">Expense</option>
             <option value="TRANSFER">Transfer</option>
             <option value="CC_PAYMENT">Card Payment</option>
+            <option value="GOAL_CONTRIBUTION">Goal Contribution</option>
           </select>
         </CardContent>
       </Card>
@@ -270,7 +346,7 @@ export function TransactionsPage() {
                   <Icon className={cn("h-5 w-5 shrink-0", meta.className)} />
                   <div className="min-w-0">
                     <p className="truncate font-medium">
-                      {txn.note || txn.category?.name || meta.label}
+                      {txn.note || txn.category?.name || txn.goal?.name || meta.label}
                     </p>
                     <p className="truncate text-xs text-muted-foreground">
                       {formatDate(txn.date)}
@@ -278,6 +354,9 @@ export function TransactionsPage() {
                       {txn.creditCard && ` · ${txn.creditCard.name}`}
                       {txn.toAccount && ` → ${txn.toAccount.name}`}
                       {txn.category && ` · ${txn.category.name}`}
+                      {txn.goal && ` · Goal: ${txn.goal.name}`}
+                      {txn.splits.length > 0 &&
+                        ` · Split: ${txn.splits.map((s) => `${s.contact.name} ${formatMoney(Number(s.amount))}${s.settledAt ? " (settled)" : ""}`).join(", ")}`}
                     </p>
                   </div>
                 </div>
@@ -288,10 +367,10 @@ export function TransactionsPage() {
                     </Badge>
                   )}
                   <span className={cn("font-semibold", meta.className)}>
-                    {txn.type === "EXPENSE" || txn.type === "CC_PAYMENT" ? "-" : txn.type === "INCOME" ? "+" : ""}
+                    {txn.type === "EXPENSE" || txn.type === "CC_PAYMENT" || txn.type === "GOAL_CONTRIBUTION" ? "-" : txn.type === "INCOME" ? "+" : ""}
                     {formatMoney(Number(txn.amount))}
                   </span>
-                  {txn.type !== "CC_PAYMENT" && (
+                  {txn.type !== "CC_PAYMENT" && txn.type !== "GOAL_CONTRIBUTION" && (
                     <Button variant="ghost" size="icon" onClick={() => openEdit(txn)}>
                       <Pencil className="h-4 w-4" />
                     </Button>

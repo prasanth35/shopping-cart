@@ -8,7 +8,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { Wallet, CreditCard, TrendingUp, PiggyBank } from "lucide-react";
+import { Wallet, CreditCard, TrendingUp, PiggyBank, Target, Users } from "lucide-react";
 import { useDashboardSummary } from "@/hooks/useDashboard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatMoney } from "@/lib/utils";
@@ -72,10 +72,12 @@ export function DashboardPage() {
         <p className="text-5xl font-semibold tracking-tight">{formatMoney(data.netWorth)}</p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatTile label="Bank balance" value={formatMoney(data.totalAccountBalance)} icon={Wallet} />
         <StatTile label="Credit card outstanding" value={formatMoney(data.totalCardOutstanding)} icon={CreditCard} tone="critical" />
         <StatTile label="Investments" value={formatMoney(data.investmentValue)} icon={TrendingUp} tone="good" />
+        <StatTile label="Goal savings" value={formatMoney(data.goalSavings)} icon={Target} />
+        <StatTile label="Owed to you" value={formatMoney(data.owedToYou)} icon={Users} tone={data.owedToYou > 0 ? "good" : undefined} />
         <StatTile label="This month net" value={formatMoney(data.monthIncome - data.monthExpense)} icon={PiggyBank} />
       </div>
 

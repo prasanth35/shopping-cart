@@ -8,6 +8,7 @@ import { AccountsPage } from "@/pages/Accounts";
 import { CreditCardsPage } from "@/pages/CreditCards";
 import { CategoriesPage } from "@/pages/Categories";
 import { GoalsPage } from "@/pages/Goals";
+import { SplitsPage } from "@/pages/Splits";
 import { InvestmentsPage } from "@/pages/Investments";
 import { VaultPage } from "@/pages/Vault";
 import { SettingsPage } from "@/pages/Settings";
@@ -32,6 +33,7 @@ export default function App() {
         <Route path="credit-cards" element={<CreditCardsPage />} />
         <Route path="categories" element={<CategoriesPage />} />
         <Route path="goals" element={<GoalsPage />} />
+        <Route path="splits" element={<SplitsPage />} />
         <Route path="investments" element={<InvestmentsPage />} />
         <Route path="vault" element={<VaultPage />} />
         <Route path="settings" element={<SettingsPage />} />

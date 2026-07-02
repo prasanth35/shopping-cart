@@ -20,6 +20,7 @@ enum TransactionType {
   EXPENSE
   TRANSFER
   CC_PAYMENT
+  GOAL_CONTRIBUTION
 }
 
 enum InvestmentTxnType {
@@ -47,6 +48,7 @@ model User {
   goals        Goal[]
   investments  Investment[]
   vaultEntries VaultEntry[]
+  contacts     Contact[]
 }
 
 model Account {
@@ -69,17 +71,17 @@ model Account {
 }
 
 model CreditCard {
-  id               String   @id @default(uuid())
-  userId           String
-  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name             String
-  bank             String
-  creditLimit      Decimal  @db.Decimal(14, 2)
-  billingCycleDay  Int
-  dueDay           Int
-  isActive         Boolean  @default(true)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name            String
+  bank            String
+  creditLimit     Decimal  @db.Decimal(14, 2)
+  billingCycleDay Int
+  dueDay          Int
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   transactions Transaction[]
 
@@ -100,84 +102,111 @@ model Category {
 
   transactions Transaction[]
 
-  @@index([userId])
   @@unique([userId, name, kind])
+  @@index([userId])
 }
 
 model Transaction {
-  id           String          @id @default(uuid())
-  userId       String
-  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type         TransactionType
-  amount       Decimal         @db.Decimal(14, 2)
-  date         DateTime
-  note         String?
-  payee        String?
-  tags         String[]        @default([])
+  id     String          @id @default(uuid())
+  userId String
+  user   User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type   TransactionType
+  amount Decimal         @db.Decimal(14, 2)
+  date   DateTime
+  note   String?
+  payee  String?
+  tags   String[]        @default([])
 
-  accountId    String?
-  account      Account?        @relation("TxnAccount", fields: [accountId], references: [id], onDelete: SetNull)
+  accountId String?
+  account   Account? @relation("TxnAccount", fields: [accountId], references: [id], onDelete: SetNull)
 
-  toAccountId  String?
-  toAccount    Account?        @relation("TxnToAccount", fields: [toAccountId], references: [id], onDelete: SetNull)
+  toAccountId String?
+  toAccount   Account? @relation("TxnToAccount", fields: [toAccountId], references: [id], onDelete: SetNull)
 
   creditCardId String?
-  creditCard   CreditCard?     @relation(fields: [creditCardId], references: [id], onDelete: SetNull)
+  creditCard   CreditCard? @relation(fields: [creditCardId], references: [id], onDelete: SetNull)
 
-  categoryId   String?
-  category     Category?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
+  goalId String?
+  goal   Goal?   @relation(fields: [goalId], references: [id], onDelete: SetNull)
+
+  splits Split[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([userId, date])
   @@index([accountId])
   @@index([creditCardId])
   @@index([categoryId])
+  @@index([goalId])
 }
 
 model Goal {
-  id           String   @id @default(uuid())
-  userId       String
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name         String
-  targetAmount Decimal  @db.Decimal(14, 2)
-  targetDate   DateTime?
+  id              String    @id @default(uuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name            String
+  targetAmount    Decimal   @db.Decimal(14, 2)
+  targetDate      DateTime?
   linkedAccountId String?
-  linkedAccount   Account? @relation(fields: [linkedAccountId], references: [id], onDelete: SetNull)
-  isArchived   Boolean  @default(false)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  linkedAccount   Account?  @relation(fields: [linkedAccountId], references: [id], onDelete: SetNull)
+  isArchived      Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  contributions GoalContribution[]
+  // Contributions are GOAL_CONTRIBUTION transactions (see Transaction.goalId) —
+  // each one records which account the saved money came from.
+  contributions Transaction[]
 
   @@index([userId])
 }
 
-model GoalContribution {
+// A person you split expenses with (not a User — no login of their own).
+model Contact {
   id        String   @id @default(uuid())
-  goalId    String
-  goal      Goal     @relation(fields: [goalId], references: [id], onDelete: Cascade)
-  amount    Decimal  @db.Decimal(14, 2)
-  date      DateTime
-  note      String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  notes     String?
   createdAt DateTime @default(now())
 
-  @@index([goalId])
+  splits Split[]
+
+  @@index([userId])
+}
+
+// A portion of an expense you paid that a contact owes you back.
+model Split {
+  id                   String      @id @default(uuid())
+  transactionId        String
+  transaction          Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  contactId            String
+  contact              Contact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  amount               Decimal     @db.Decimal(14, 2)
+  settledAt            DateTime?
+  // The INCOME transaction created when this split was settled, if any.
+  settledTransactionId String?     @unique
+  createdAt            DateTime    @default(now())
+
+  @@index([transactionId])
+  @@index([contactId])
 }
 
 model Investment {
-  id             String   @id @default(uuid())
-  userId         String
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  fundName       String
-  folioNumber    String?
-  category       String? // equity, debt, hybrid, etc.
-  currentNav     Decimal  @default(0) @db.Decimal(14, 4)
-  navUpdatedAt   DateTime?
-  isArchived     Boolean  @default(false)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id           String    @id @default(uuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fundName     String
+  folioNumber  String?
+  category     String? // equity, debt, hybrid, etc.
+  currentNav   Decimal   @default(0) @db.Decimal(14, 4)
+  navUpdatedAt DateTime?
+  isArchived   Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   transactions InvestmentTransaction[]
 

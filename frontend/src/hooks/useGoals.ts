@@ -35,10 +35,12 @@ export function useDeleteGoal() {
 export function useContributeGoal() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, amount, note }: { id: string; amount: number; note?: string }) =>
-      api.post<Goal>(`/goals/${id}/contribute`, { amount, note }),
+    mutationFn: ({ id, accountId, amount, note }: { id: string; accountId: string; amount: number; note?: string }) =>
+      api.post<Goal>(`/goals/${id}/contribute`, { accountId, amount, note }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: KEY });
+      qc.invalidateQueries({ queryKey: ["accounts"] });
+      qc.invalidateQueries({ queryKey: ["transactions"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
     },
   });
